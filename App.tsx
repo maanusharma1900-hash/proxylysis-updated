@@ -1647,6 +1647,22 @@ import { Coins } from 'lucide-react';
       
       const newFiles: { data: string, mimeType: string, name: string, size: number }[] = [];
 
+      const getMimeTypeFromName = (name: string, fallbackType = 'application/octet-stream') => {
+        const ext = name.split('.').pop()?.toLowerCase();
+        switch (ext) {
+          case 'pdf': return 'application/pdf';
+          case 'png': return 'image/png';
+          case 'jpg':
+          case 'jpeg': return 'image/jpeg';
+          case 'gif': return 'image/gif';
+          case 'bmp': return 'image/bmp';
+          case 'webp': return 'image/webp';
+          case 'tif':
+          case 'tiff': return 'image/tiff';
+          default: return fallbackType;
+        }
+      };
+
       const processFile = async (file: File) => {
         if (file.name.toLowerCase().endsWith('.zip')) {
           try {
@@ -1657,11 +1673,14 @@ import { Coins } from 'lucide-react';
             for (const entryName of zipEntries) {
               const zipFile = contents.files[entryName];
               const blob = await zipFile.async('blob');
-              const extractedFile = new File([blob], entryName, { type: blob.type || 'application/octet-stream' });
+              const mimeType = zipFile.type || getMimeTypeFromName(entryName);
+              const extractedFile = new File([blob], entryName, { type: mimeType });
               
-              // Only process supported image/pdf types from zip (simplification)
-              if (extractedFile.type.startsWith('image/') || extractedFile.type === 'application/pdf') {
+              // Support image/pdf types from zip, falling back to extension when needed
+              if (mimeType.startsWith('image/') || mimeType === 'application/pdf') {
                 await readFile(extractedFile);
+              } else {
+                console.warn(`Skipping unsupported zip entry: ${entryName} (${mimeType})`);
               }
             }
           } catch (err) {
@@ -2371,7 +2390,7 @@ import { Coins } from 'lucide-react';
                   <div className="pt-6 border-t border-slate-100/60 mt-4">
                     <div className="flex justify-between items-center mb-4">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest">Documents</label>
-                      <span className="text-[9px] font-black text-indigo-600 bg-gradient-to-r from-indigo-50 to-purple-50 px-2 py-1 rounded-md border border-indigo-200/60">MAX 5MB</span>
+                      <span className="text-[9px] font-black text-indigo-600 bg-gradient-to-r from-indigo-50 to-purple-50 px-2 py-1 rounded-md border border-indigo-200/60">MAX 10MB</span>
                     </div>
                     <div className="flex flex-col gap-4">
                       <input 
@@ -2380,7 +2399,7 @@ import { Coins } from 'lucide-react';
                         onChange={handleFileChange}
                         className="hidden" 
                         id="doc-upload"
-                        accept="image/*,application/pdf"
+                        accept="image/*,application/pdf,.zip"
                       />
                       <label 
                         htmlFor="doc-upload"
@@ -2391,6 +2410,8 @@ import { Coins } from 'lucide-react';
                         </div>
                         <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest group-hover:text-indigo-700 transition-colors">Upload Evidence</span>
                       </label>
+
+                      <p className="text-[9px] font-bold text-slate-500 text-center">Supports: Images, PDF, or ZIP files (ZIP files will be automatically extracted)</p>
 
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-col gap-2">
