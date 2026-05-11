@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Session": {
+      "title": "History Session",
+      "description": "Stored analysis sessions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gl_id": { "type": "string" },
+        "product_name": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "saved_by": { "type": "string" },
+        "parameters": { "type": "object" },
+        "csl_data": { "type": "array" },
+        "match_data": { "type": "array" },
+        "analysis_results": { "type": "object" },
+        "scan_results": { "type": "object" },
+        "mcat_data": { "type": "array" },
+        "company_overviews": { "type": "object" },
+        "mismatch_status": { "type": "object" },
+        "raw_category": { "type": "object" },
+        "raw_complaints": { "type": "object" },
+        "raw_ratings": { "type": "object" },
+        "raw_fraud": { "type": "object" },
+        "raw_services": { "type": "object" },
+        "additional_comments": { "type": "string" }
+      },
+      "required": ["id", "gl_id", "saved_by"]
+    },
+    "Associate": {
+      "title": "Associate Credential",
+      "description": "User credentials managed by admin",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "created_at": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "associate"] }
+      },
+      "required": ["email", "password"]
+    },
+    "FlagConfig": {
+      "title": "Red Flag Configuration",
+      "description": "Scoring parameters for flagging sellers",
+      "type": "object",
+      "properties": {
+        "pnsRateThreshold": { "type": "number", "description": "Flag if PNS Rate is below this %" },
+        "hrsHistoryThreshold": { "type": "number", "description": "Flag if HRS History is at or above this" },
+        "nachBounceThreshold": { "type": "number", "description": "Flag if NACH Bounce is at or above this" },
+        "addressNotVerifiedThreshold": { "type": "number", "description": "Flag if Address Not Verified is at or above this" },
+        "blPurchaseThreshold": { "type": "number", "description": "Flag if BL Purchase is above this" },
+        "lmsReplyThreshold": { "type": "number", "description": "Flag if LMS Replies is below this" },
+        "bsComplaintsThreshold": { "type": "number", "description": "Flag if BS Complaints is above this" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "updated_by": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "sessions": {
+      "schema": "Session",
+      "description": "All saved analysis sessions"
+    },
+    "users": {
+      "schema": "Associate",
+      "description": "Credentials for associates and admin"
+    },
+    "flag_configs": {
+      "schema": "FlagConfig",
+      "description": "Global red flag scoring configuration"
+    }
+  }
+}
