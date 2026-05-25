@@ -284,3 +284,45 @@ export const searchOnlinePresence = async (companyName: string, address: string,
     return [];
   }
 };
+
+/**
+ * Get accumulated token usage and clear history
+ * Used for saving token metrics after analysis completes
+ */
+export const getAndClearTokenHistory = () => {
+  const history = [...globalTokenHistory];
+  globalTokenHistory = [];
+  return history;
+};
+
+/**
+ * Calculate token metrics from history
+ */
+export const calculateTokenMetrics = (tokenHistory: TokenUsage[]) => {
+  if (!tokenHistory || tokenHistory.length === 0) {
+    return {
+      total_tokens: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      cost: 0
+    };
+  }
+
+  const PRICING = {
+    input: 0.0000035,
+    output: 0.0000105
+  };
+
+  const totals = tokenHistory.reduce((acc, curr) => ({
+    prompt_tokens: acc.prompt_tokens + curr.prompt_tokens,
+    completion_tokens: acc.completion_tokens + curr.completion_tokens,
+    total_tokens: acc.total_tokens + curr.total_tokens
+  }), { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 });
+
+  const cost = (totals.prompt_tokens * PRICING.input) + (totals.completion_tokens * PRICING.output);
+
+  return {
+    ...totals,
+    cost
+  };
+};

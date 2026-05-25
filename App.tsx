@@ -6,11 +6,12 @@
   import { Bold, Italic, Underline, List, ListOrdered, Image as ImageIcon, Trash2, Type, Link as LinkIcon, Eraser, ArrowUpDown } from 'lucide-react';
   import { motion, AnimatePresence } from 'framer-motion';
   import { AgentSettings } from './types.ts';
-  import { identifyInvolvedGLIDs, analyzeProductMismatch, searchOnlinePresence, scanDocumentsWithGemini } from './services/geminiService.ts';
+  import { identifyInvolvedGLIDs, analyzeProductMismatch, searchOnlinePresence, scanDocumentsWithGemini, getTokenHistory } from './services/geminiService.ts';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { historyService } from './services/historyService.ts';
 import { configService, RedFlagConfig } from './services/configService.ts';
 import TokenAnalysis from './components/TokenAnalysis.tsx';
+import TokenUsageAdmin from './components/TokenUsageAdmin.tsx';
 import { Coins } from 'lucide-react';
 
   const App: React.FC = () => {
@@ -325,6 +326,7 @@ import { Coins } from 'lucide-react';
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [isSavingSession, setIsSavingSession] = useState(false);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+    const [lastAnalysisTokens, setLastAnalysisTokens] = useState<any>(null);
     const [sessionOverviews, setSessionOverviews] = useState<Record<string, any>>({});
     const [additionalComments, setAdditionalComments] = useState('');
     const editorRef = useRef<HTMLDivElement>(null);
@@ -355,8 +357,20 @@ import { Coins } from 'lucide-react';
           raw_services: rawServicesResponse
         };
 
+        // Get current token analysis data
+        const tokenHistory = getTokenHistory();
+        const tokenAnalysisData = tokenHistory.reduce((acc, curr) => ({
+          input: acc.input + curr.prompt_tokens,
+          output: acc.output + curr.completion_tokens,
+          total: acc.total + curr.total_tokens,
+          cost: acc.cost + (curr.prompt_tokens * 0.0000035) + (curr.completion_tokens * 0.0000105),
+          request_count: acc.request_count + 1
+        }), { input: 0, output: 0, total: 0, cost: 0, request_count: 0 });
+
+        const sessionId = currentSessionId || `${settings.glId || 'unknown'}-${new Date().toISOString().split('T')[0]}-${Date.now()}`;
+
         const payload: any = {
-          id: currentSessionId,
+          id: sessionId,
           gl_id: settings.glId,
           product_name: settings.productName,
           parameters: {
@@ -378,6 +392,14 @@ import { Coins } from 'lucide-react';
           mcat_data: mcatData,
           company_overviews: sessionOverviews,
           additional_comments: additionalComments,
+          token_analysis: {
+            total_tokens: tokenAnalysisData.total,
+            input_tokens: tokenAnalysisData.input,
+            output_tokens: tokenAnalysisData.output,
+            total_cost: tokenAnalysisData.cost,
+            request_count: tokenAnalysisData.request_count,
+            last_updated: new Date().toISOString()
+          },
           saved_by: authEmail || 'Unknown',
           SAVED_BY: authEmail || 'Unknown',
           savedBy: authEmail || 'Unknown',
@@ -387,6 +409,7 @@ import { Coins } from 'lucide-react';
         };
 
         const result = await historyService.saveSession(payload);
+        setCurrentSessionId(result.id);
         const isUpdate = !!currentSessionId;
         alert(`${isUpdate ? 'Session updated' : 'Session saved'} successfully! (ID: ${result.id})`);
         fetchHistory(); // Refresh history list after save
@@ -801,23 +824,29 @@ import { Coins } from 'lucide-react';
       return { score, description, flagsCount: reasons.length };
     };
 
-    // Compute filtered matchmaking data based on contacts_add_date
+    // Compute filtered matchmaking data based on contacts_add_date OR last_contact_date
     const filteredMatchmakingData = useMemo(() => {
       if (!matchmakingData) return null;
       if (!matchFilterStartDate && !matchFilterEndDate) return matchmakingData;
 
-      return matchmakingData.filter(item => {
-        const addDateStr = item.contacts_add_date; 
-        if (!addDateStr) return false;
-        
-        const itemDate = new Date(addDateStr.split(' ')[0]);
-        const start = matchFilterStartDate ? new Date(matchFilterStartDate) : null;
-        const end = matchFilterEndDate ? new Date(matchFilterEndDate) : null;
+      const start = matchFilterStartDate ? new Date(matchFilterStartDate) : null;
+      const end = matchFilterEndDate ? new Date(matchFilterEndDate) : null;
 
-        if (start && itemDate < start) return false;
-        if (end && itemDate > end) return false;
-        
+      const isDateInRange = (dateStr: any) => {
+        if (!dateStr) return false;
+        const parsed = new Date(String(dateStr).split(' ')[0]);
+        if (isNaN(parsed.getTime())) return false;
+        if (start && parsed < start) return false;
+        if (end && parsed > end) return false;
         return true;
+      };
+
+      return matchmakingData.filter(item => {
+        const addDateStr = item.contacts_add_date;
+        const lastContactStr = item.last_contact_date;
+
+        // Include item if either date falls within the selected range
+        return isDateInRange(addDateStr) || isDateInRange(lastContactStr);
       });
     }, [matchmakingData, matchFilterStartDate, matchFilterEndDate]);
 
@@ -2206,6 +2235,7 @@ import { Coins } from 'lucide-react';
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   History
                 </button>
+                {isAdmin && (
                 <button 
                   onClick={() => setIsTokenAnalysisOpen(true)}
                   className="flex items-center gap-2 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 border border-indigo-200/60 shadow-sm hover:shadow-md"
@@ -2213,6 +2243,7 @@ import { Coins } from 'lucide-react';
                   <Coins className="w-4 h-4" />
                   Token Analysis
                 </button>
+                )}
                 {involvedGLIDs && involvedGLIDs.length > 0 && (
                   <>
                     <button 
@@ -2548,6 +2579,7 @@ import { Coins } from 'lucide-react';
                       { label: 'UPI ID of Receiver', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', data: scanResults.upiIds, color: 'text-violet-500', bg: 'bg-violet-50' },
                       { label: 'Address', icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z', data: scanResults.addresses, color: 'text-rose-500', bg: 'bg-rose-50' },
                       { label: 'Invoice Dates', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', data: scanResults.invoiceDates || [], color: 'text-amber-500', bg: 'bg-amber-50' },
+                      { label: 'Transaction Dates', icon: 'M5 3v2M19 3v2M3 11h18M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z', data: ((scanResults as any).transactionDates || (scanResults as any).paymentDates || scanResults.invoiceDates) || [], color: 'text-emerald-600', bg: 'bg-emerald-50' },
                     ].map((group, idx) => (
                       <div key={idx} className="space-y-3">
                         <div className="flex items-center gap-2">
@@ -2575,67 +2607,67 @@ import { Coins } from 'lucide-react';
 
               {isStreamsVisible && (
                 <section className="bg-slate-900 rounded-[2rem] border border-slate-800 p-6 shadow-2xl space-y-6">
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                       MATCHMAKING STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-blue-400 font-mono text-[10px] leading-relaxed">
                         {rawMatchResponse ? JSON.stringify(rawMatchResponse, null, 2) : '// Awaiting sync...'}
                       </pre>
                     </div>
                   </div>
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div>
                       SERVICES STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-rose-400 font-mono text-[10px] leading-relaxed">
                         {rawServicesResponse ? JSON.stringify(rawServicesResponse, null, 2) : '// Awaiting analysis...'}
                       </pre>
                     </div>
                   </div>
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
                       CATEGORY STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-amber-400 font-mono text-[10px] leading-relaxed">
                         {rawCategoryResponse ? JSON.stringify(rawCategoryResponse, null, 2) : '// Awaiting report...'}
                       </pre>
                     </div>
                   </div>
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full"></div>
                       COMPLAINTS STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-cyan-400 font-mono text-[10px] leading-relaxed">
                         {rawComplaintsResponse ? JSON.stringify(rawComplaintsResponse, null, 2) : '// Awaiting query...'}
                       </pre>
                     </div>
                   </div>
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
                       RATINGS STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-indigo-400 font-mono text-[10px] leading-relaxed">
                         {rawRatingsResponse ? JSON.stringify(rawRatingsResponse, null, 2) : '// Awaiting ratings...'}
                       </pre>
                     </div>
                   </div>
-                  <div className="flex flex-col h-[200px]">
+                  <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
                       <div className="w-1.5 h-1.5 bg-pink-500 rounded-full"></div>
                       FRAUD STREAM
                     </h3>
-                    <div className="flex-1 overflow-auto custom-scrollbar-dark rounded-2xl bg-black/40 p-3 border border-slate-800/50">
+                    <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
                       <pre className="text-pink-400 font-mono text-[10px] leading-relaxed">
                         {rawFraudResponse ? JSON.stringify(rawFraudResponse, null, 2) : '// Awaiting fraud data...'}
                       </pre>
@@ -2671,7 +2703,7 @@ import { Coins } from 'lucide-react';
                   </div>
                 </div>
 
-                <div className="flex-1 p-8 space-y-12 overflow-y-auto custom-scrollbar max-h-[1000px]">
+                <div className="flex-1 p-8 space-y-12">
                   
                   {/* 1. CSL Activity Timeline */}
                   <section className="space-y-6">
@@ -2710,7 +2742,7 @@ import { Coins } from 'lucide-react';
                                   <button onClick={() => setVisibleCslColumns([])} className="text-[10px] font-black text-rose-600 uppercase hover:underline tracking-widest">Clear All</button>
                               </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-y-3 gap-x-6 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                            <div className="grid grid-cols-3 gap-y-3 gap-x-6 pr-2">
                               {cslParameters.map(param => (
                                 <label key={param} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-slate-50 rounded-xl transition-colors">
                                   <input 
@@ -2730,8 +2762,8 @@ import { Coins } from 'lucide-react';
                       </div>
                     </div>
 
-                    <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-sm max-h-[600px] flex flex-col">
-                      <div className="overflow-auto custom-scrollbar flex-1">
+                    <div className="border border-slate-200 rounded-3xl shadow-sm flex flex-col">
+                      <div className="overflow-x-auto">
                         {cslTableData !== null ? (
                           <>
                             <table className="w-full text-left border-collapse" style={{ minWidth: `${(visibleCslColumns.length * 180) + 64}px` }}>
@@ -2845,7 +2877,7 @@ import { Coins } from 'lucide-react';
                                         <button onClick={() => setVisibleMatchColumns([])} className="text-[10px] font-black text-rose-600 uppercase hover:underline tracking-widest">Clear All</button>
                                     </div>
                                   </div>
-                                  <div className="grid grid-cols-3 gap-y-3 gap-x-6 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                  <div className="grid grid-cols-3 gap-y-3 gap-x-6 pr-2">
                                     {matchParameters.map(param => (
                                       <label key={param} className="flex items-center gap-3 cursor-pointer group p-2 hover:bg-slate-50 rounded-xl transition-colors">
                                         <input 
@@ -2866,8 +2898,8 @@ import { Coins } from 'lucide-react';
                           </div>
                         </div>
 
-                      <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-sm max-h-[450px] flex flex-col animate-in fade-in slide-in-from-top-4 duration-500">
-                        <div className="overflow-x-auto custom-scrollbar">
+                      <div className="border border-slate-200 rounded-3xl shadow-sm flex flex-col animate-in fade-in slide-in-from-top-4 duration-500">
+                        <div className="overflow-x-auto">
                           {filteredMatchmakingData !== null ? (
                             <table className="w-full text-left border-collapse" style={{ minWidth: `${(visibleMatchColumns.length * 180) + 64}px` }}>
                               <thead className="sticky top-0 z-10 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[11px] font-black uppercase tracking-widest">
@@ -2983,7 +3015,7 @@ import { Coins } from 'lucide-react';
 
                       <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-2xl shadow-slate-200/40 bg-white">
                         {involvedGLIDs ? (
-                          <div className="overflow-x-auto custom-scrollbar">
+                          <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                               <thead className="bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest">
                                   <tr>
@@ -4356,6 +4388,20 @@ import { Coins } from 'lucide-react';
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Token Usage Intelligence Analytics */}
+                      <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Token Consumption Intelligence</h3>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Consolidated Gemini API Usage & Cost Analytics</p>
+                          </div>
+                        </div>
+                        <TokenUsageAdmin startDate={adminStartDate} endDate={adminEndDate} />
                       </div>
                     </div>
                   )}

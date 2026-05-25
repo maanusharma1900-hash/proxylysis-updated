@@ -40,6 +40,26 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+
+    // Token Usage Collection
+    match /token_usage/{docId} {
+      allow create, read: if true;
+      allow list: if true;
+      // Validate required fields on create
+      allow create: if 
+        request.resource.data.associate_email is string &&
+        request.resource.data.gl_id is string &&
+        request.resource.data.product_name is string &&
+        request.resource.data.prompt_tokens is number &&
+        request.resource.data.completion_tokens is number &&
+        request.resource.data.total_tokens is number &&
+        request.resource.data.cost is number &&
+        request.resource.data.model is string &&
+        request.resource.data.analysis_type is string &&
+        request.resource.data.status is string &&
+        // case_study_id is optional, so no requirement
+        (!('case_study_id' in request.resource.data) || request.resource.data.case_study_id is string);
+    }
   }
 }
 
