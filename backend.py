@@ -7,6 +7,8 @@ from flask_cors import CORS
 from datetime import datetime
 import psycopg2
 import gemini_service
+from playwright.sync_api import sync_playwright
+import asyncio
 
 app = Flask(__name__, static_folder='dist')
 CORS(app)
@@ -275,6 +277,118 @@ def get_redshift_complaints():
         conn.close()
         return jsonify({"count": count})
     except: return jsonify({"count": 0})
+
+# --- PLAYWRIGHT TOKEN FETCH ENDPOINT ---
+@app.route('/api/fetch-indiamart-token', methods=['POST'])
+def fetch_indiamart_token():
+    """
+    Fetch IndiaMART im_iss cookie using Playwright.
+    Requires: User must have Chrome installed and seller.indiamart.com session active.
+    Returns: JWT token extracted from im_iss cookie
+    """
+    print('[BACKEND] /api/fetch-indiamart-token endpoint called')
+    try:
+        print('[BACKEND] Starting Playwright browser automation...')
+        
+        with sync_playwright() as p:
+            print('[BACKEND] Launching Chromium browser...')
+            # Launch Chromium - will use default profile
+            browser = p.chromium.launch(headless=False)
+            print('[BACKEND] Browser launched successfully')
+            
+            context = browser.new_context()
+            print('[BACKEND] New browser context created')
+            
+            page = context.new_page()
+            print('[BACKEND] New page created')
+            
+            # Navigate to IndiaMART login page
+            url = 'https://seller.indiamart.com/login/adminlogin?msg=1'
+            print(f'[BACKEND] Navigating to {url}...')
+            page.goto(url, wait_until='networkidle', timeout=30000)
+            print('[BACKEND] Page loaded successfully')
+            
+            # Wait a moment for cookies to be set
+            page.wait_for_timeout(2000)
+            print('[BACKEND] Waited for page stabilization')
+            
+            # Get all cookies for seller.indiamart.com
+            print('[BACKEND] Retrieving cookies from seller.indiamart.com...')
+            cookies = context.cookies()
+            print(f'[BACKEND] Total cookies found: {len(cookies)}')
+            
+            # Log all cookie names
+            cookie_names = [c['name'] for c in cookies]
+            print(f'[BACKEND] Cookie names: {cookie_names}')
+            
+            # Find im_iss cookie
+            im_iss_cookie = None
+            for cookie in cookies:
+                if cookie['name'] == 'im_iss':
+                    im_iss_cookie = cookie
+                    print(f'[BACKEND] im_iss cookie found')
+                    break
+            
+            context.close()
+            browser.close()
+            print('[BACKEND] Browser closed')
+            
+            if not im_iss_cookie:
+                error_msg = 'im_iss cookie not found. User may not be logged in to seller.indiamart.com'
+                print(f'[BACKEND] Error: {error_msg}')
+                return jsonify({
+                    'error': error_msg,
+                    'details': 'Please ensure you are logged in to https://seller.indiamart.com/login/adminlogin'
+                }), 400
+            
+            # Extract and decode cookie value
+            raw_value = im_iss_cookie.get('value', '')
+            print(f'[BACKEND] Raw cookie value length: {len(raw_value)}')
+            
+            try:
+                from urllib.parse import unquote
+                decoded_value = unquote(raw_value)
+                print(f'[BACKEND] Decoded value length: {len(decoded_value)}')
+                print(f'[BACKEND] Decoded value starts with: {decoded_value[:20]}')
+            except Exception as decode_err:
+                error_msg = f'Failed to decode cookie: {str(decode_err)}'
+                print(f'[BACKEND] Error: {error_msg}')
+                return jsonify({'error': error_msg}), 400
+            
+            # Extract JWT (everything after 't=')
+            if not decoded_value.startswith('t='):
+                error_msg = f'Cookie value does not start with "t=". Found: {decoded_value[:30]}'
+                print(f'[BACKEND] Error: {error_msg}')
+                return jsonify({'error': error_msg}), 400
+            
+            token = decoded_value[2:].strip()
+            if not token:
+                error_msg = 'JWT token is empty after "t=" prefix'
+                print(f'[BACKEND] Error: {error_msg}')
+                return jsonify({'error': error_msg}), 400
+            
+            # Validate JWT format (should have 3 parts)
+            parts = token.split('.')
+            if len(parts) != 3:
+                error_msg = f'Invalid JWT format: expected 3 parts, got {len(parts)}'
+                print(f'[BACKEND] Error: {error_msg}')
+                return jsonify({'error': error_msg}), 400
+            
+            print(f'[BACKEND] ✓ JWT extracted successfully. Length: {len(token)}')
+            return jsonify({
+                'token': token,
+                'success': True,
+                'message': 'IndiaMART session token retrieved successfully'
+            }), 200
+            
+    except Exception as err:
+        error_msg = f'Playwright automation error: {str(err)}'
+        print(f'[BACKEND] Exception: {error_msg}')
+        print(f'[BACKEND] Traceback: {traceback.format_exc()}')
+        return jsonify({
+            'error': error_msg,
+            'details': 'Please ensure Chrome is installed and you are logged in to seller.indiamart.com'
+        }), 500
 
 @app.route('/redshift_overview', methods=['POST'])
 @app.route('/redshift/overview', methods=['POST'])

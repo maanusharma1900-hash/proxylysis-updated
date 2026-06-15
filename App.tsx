@@ -3,6 +3,7 @@
   import * as XLSX from 'xlsx';
   import { db, auth } from './src/lib/firebase';
   import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
+  import { signInWithGoogle } from './src/lib/googleAuth';
   import { Bold, Italic, Underline, List, ListOrdered, Image as ImageIcon, Trash2, Type, Link as LinkIcon, Eraser, ArrowUpDown } from 'lucide-react';
   import { motion, AnimatePresence } from 'framer-motion';
   import { AgentSettings } from './types.ts';
@@ -756,7 +757,7 @@ import { Coins } from 'lucide-react';
         return {
           rowBg: '',
           text: 'text-slate-400',
-          button: 'text-indigo-600 hover:text-indigo-800',
+          button: 'text-blue-600 hover:text-blue-800',
           badgeBg: 'bg-slate-50',
           badgeBorder: 'border-slate-100',
           severity: 'Neutral'
@@ -2035,39 +2036,85 @@ import { Coins } from 'lucide-react';
 
     const isFullyOnline = backendStatus.csl && backendStatus.match && backendStatus.services && backendStatus.category && backendStatus.complaints && backendStatus.ratings && backendStatus.fraud && backendStatus.overview && backendStatus.summary && backendStatus.history;
 
+    const handleGoogleLogin = async () => {
+      try {
+        setLoginError('');
+        const user = await signInWithGoogle();
+        const emailLower = user.email!.toLowerCase().trim();
+        
+        // Sync with Firestore database
+        const { getDoc, setDoc, doc } = await import('firebase/firestore');
+        const userDocRef = doc(db, 'users', emailLower);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setIsAdmin(userData.role === 'admin');
+          if (userData.role === 'admin') {
+            localStorage.setItem('proxy_admin_status', 'true');
+          }
+        } else {
+          await setDoc(userDocRef, {
+            email: emailLower,
+            role: 'associate',
+            created_at: new Date().toISOString(),
+            auth_method: 'google'
+          });
+          setIsAdmin(false);
+        }
+
+        setIsAuthenticated(true);
+        setAuthEmail(emailLower);
+        localStorage.setItem('proxy_auth_status', 'true');
+        localStorage.setItem('proxy_auth_email', emailLower);
+      } catch (error: any) {
+        setLoginError(error.message || "Failed to login with Google");
+      }
+    };
+
     if (!isAuthenticated) {
       return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-indigo-100 selection:text-indigo-900">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="bg-white w-full max-w-md rounded-[3rem] shadow-[0_40px_100px_-15px_rgba(0,0,0,0.08)] border border-slate-200/60 overflow-hidden"
-          >
-            <div className="p-10 pt-14">
-              <div className="flex flex-col items-center mb-12">
+        <div className="min-h-screen bg-slate-50 flex w-full selection:bg-blue-500/30 selection:text-slate-900">
+          {/* Left Visual Pane - hidden on mobile */}
+          <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-[#070913]">
+            <img 
+              src="/login-bg-custom.jpg" 
+              alt="Proxylysis Background" 
+              className="absolute inset-0 w-full h-full object-cover object-left"
+            />
+          </div>
+
+          {/* Right Login Pane */}
+          <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12 lg:p-24 bg-slate-50 relative">
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full max-w-md bg-white p-8 sm:p-10 rounded-[2rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05)] border border-slate-100/80"
+            >
+              <div className="flex flex-col mb-10">
                 <motion.div 
                   whileHover={{ rotate: 0, scale: 1.05 }}
                   initial={{ rotate: 3 }}
-                  className={`bg-gradient-to-br ${showAdminLogin ? 'from-slate-800 to-black' : 'from-indigo-600 to-violet-700'} h-20 w-20 rounded-3xl flex items-center justify-center text-white shadow-2xl shadow-indigo-200 transition-all duration-500 mb-8`}
+                  className={`bg-gradient-to-br ${showAdminLogin ? 'from-slate-800 to-black' : 'from-blue-600 to-sky-700'} h-16 w-16 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-200 transition-all duration-500 mb-6`}
                 >
-                  <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                 </motion.div>
-                <h1 className="text-3xl font-black tracking-tight text-slate-900 uppercase">
-                  {showAdminLogin ? 'Admin Nexus' : 'Proxylysis Login'}
-                </h1>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-3">
-                  {showAdminLogin ? 'Central Intelligence Control' : 'Proxylysis Intel Network'}
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 uppercase leading-none">
+                  {showAdminLogin ? 'Admin Nexus' : 'Proxylysis Agent'}
+                </h2>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] mt-3">
+                  {showAdminLogin ? 'Central Intelligence Control' : 'Secure Associate Gateway'}
                 </p>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div className="space-y-2.5">
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div className="space-y-2">
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
                     {showAdminLogin ? 'Admin Email' : 'Official Email'}
                   </label>
                   <div className="relative">
-                    <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400">
+                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.206"></path></svg>
                     </div>
                     <input 
@@ -2075,15 +2122,15 @@ import { Coins } from 'lucide-react';
                       type="email" 
                       required
                       placeholder="name@indiamart.com" 
-                      className="w-full bg-slate-50 border border-slate-200/80 rounded-[1.5rem] pl-14 pr-6 py-5 text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300" 
+                      className="w-full bg-slate-50/50 border border-slate-200/80 rounded-2xl pl-12 pr-5 py-4 text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300" 
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password</label>
                   <div className="relative">
-                    <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400">
+                    <div className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                     </div>
                     <input 
@@ -2091,7 +2138,7 @@ import { Coins } from 'lucide-react';
                       type="password" 
                       required
                       placeholder="••••••••" 
-                      className="w-full bg-slate-50 border border-slate-200/80 rounded-[1.5rem] pl-14 pr-6 py-5 text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300" 
+                      className="w-full bg-slate-50/50 border border-slate-200/80 rounded-2xl pl-12 pr-5 py-4 text-sm focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white outline-none transition-all font-bold text-slate-700 placeholder:text-slate-300" 
                     />
                   </div>
                 </div>
@@ -2102,68 +2149,96 @@ import { Coins } from 'lucide-react';
                       initial={{ opacity: 0, height: 0, y: -10 }}
                       animate={{ opacity: 1, height: 'auto', y: 0 }}
                       exit={{ opacity: 0, height: 0, y: -10 }}
-                      className="bg-rose-50 border border-rose-100/60 text-rose-600 px-5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3"
+                      className="bg-rose-50 border border-rose-100/60 text-rose-600 px-5 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 overflow-hidden"
                     >
                       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                      {loginError}
+                      <span className="truncate">{loginError}</span>
                     </motion.div>
                   )}
                 </AnimatePresence>
 
                 <button 
                   type="submit"
-                  className={`w-full py-5 ${showAdminLogin ? 'bg-slate-900' : 'bg-indigo-600'} hover:bg-black text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.3em] shadow-[0_20px_40px_-10px_rgba(15,23,42,0.3)] transform transition-all active:scale-[0.98] hover:-translate-y-0.5`}
+                  className={`w-full py-4 mt-2 ${showAdminLogin ? 'bg-slate-900' : 'bg-blue-600'} hover:bg-black text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-blue-500/20 transform transition-all active:scale-[0.98] hover:-translate-y-0.5`}
                 >
                   {showAdminLogin ? 'Access Control' : 'Verify Identity'}
                 </button>
+                
+                {!showAdminLogin && (
+                  <>
+                    <div className="relative flex items-center py-4">
+                      <div className="flex-grow border-t border-slate-200"></div>
+                      <span className="flex-shrink-0 mx-4 text-slate-500 font-bold text-[10px] uppercase tracking-widest">or continue with</span>
+                      <div className="flex-grow border-t border-slate-200"></div>
+                    </div>
+                    
+                    <button 
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      className="w-full py-4 bg-white border-2 border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        <path fill="none" d="M1 1h22v22H1z" />
+                      </svg>
+                      Sign in With Google
+                    </button>
+                  </>
+                )}
 
               </form>
 
-              {!showAdminLogin ? (
-                <button 
-                  onClick={() => {
-                    setShowAdminLogin(true);
-                    setLoginError('');
-                  }}
-                  className="w-full mt-6 py-4 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 00-1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                  Admin Panel
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    setShowAdminLogin(false);
-                    setLoginError('');
-                  }}
-                  className="w-full mt-6 py-4 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                  Back to Associate Login
-                </button>
-              )}
-            </div>
-            <div className="bg-slate-50/80 p-8 border-t border-slate-100 flex flex-col items-center gap-2">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">Proprietary Audit Technology</span>
-              <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest">© 2026 IndiaMart InterMesh Ltd.</span>
-            </div>
-          </motion.div>
+              <div className="mt-8 flex flex-col gap-4">
+                {!showAdminLogin ? (
+                  <button 
+                    onClick={() => {
+                      setShowAdminLogin(true);
+                      setLoginError('');
+                    }}
+                    className="w-full py-4 text-slate-400 hover:text-slate-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 group"
+                  >
+                    <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 00-1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 002.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    Switch to Admin Panel
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      setShowAdminLogin(false);
+                      setLoginError('');
+                    }}
+                    className="w-full py-4 text-slate-400 hover:text-slate-600 font-bold text-[10px] uppercase tracking-widest transition-colors flex items-center justify-center gap-2 group"
+                  >
+                    <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    Back to Associate Gateway
+                  </button>
+                )}
+                
+                <div className="pt-6 border-t border-slate-100 flex flex-col items-center gap-1.5">
+                  <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Proprietary Audit Technology</span>
+                  <span className="text-[9px] font-bold text-slate-400">© 2026 IndiaMart InterMesh Ltd.</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
         </div>
       );
     }
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 text-slate-900 font-sans">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-blue-50/20 text-slate-900 font-sans">
         {/* Sticky Top Bar */}
         <div className="sticky top-0 z-[60] bg-white/80 backdrop-blur-2xl border-b border-slate-200/40 shadow-lg shadow-slate-900/5">
-          <div className="max-w-full mx-auto px-4 md:px-12 py-4 flex items-center justify-between">
+          <div className="max-w-[1600px] w-full mx-auto px-4 md:px-12 py-4 flex items-center justify-between">
             <div className="flex items-center gap-5">
-              <div className="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 h-10 w-10 rounded-xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/25 transform rotate-3 hover:rotate-0 transition-all duration-500 hover:shadow-2xl hover:shadow-indigo-500/40">
+              <div className="bg-gradient-to-br from-blue-600 via-cyan-600 to-teal-600 h-10 w-10 rounded-xl flex items-center justify-center text-white shadow-xl shadow-blue-500/25 transform rotate-3 hover:rotate-0 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/40">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               </div>
               <div className="flex flex-col">
                 <h1 className="text-lg font-black tracking-tight text-slate-900 uppercase leading-none bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">Proxylysis</h1>
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.2em] mt-1 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Intelligence & Audit Engine</span>
+                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] mt-1 bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Intelligence & Audit Engine</span>
               </div>
             </div>
 
@@ -2173,7 +2248,7 @@ import { Coins } from 'lucide-react';
                   onClick={() => setIsAdminDashboardOpen(true)}
                   className="hidden lg:flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-slate-900 via-slate-800 to-black border border-slate-700/50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:from-slate-800 hover:via-slate-700 hover:to-slate-900 transition-all duration-300 shadow-xl shadow-slate-900/20 hover:shadow-2xl hover:shadow-slate-900/30 group transform hover:scale-105"
                 >
-                  <div className="p-1 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-md group-hover:scale-110 transition-all duration-300 shadow-lg">
+                  <div className="p-1 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-md group-hover:scale-110 transition-all duration-300 shadow-lg">
                     <svg className="w-3.5 h-3.5 text-white font-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                   </div>
                   Admin Center
@@ -2199,12 +2274,12 @@ import { Coins } from 'lucide-react';
                   <div className="grid grid-cols-1 gap-3">
                     {[
                       { id: 'CSL', port: 5000, status: backendStatus.csl, color: 'bg-gradient-to-r from-blue-500 to-cyan-500' },
-                      { id: 'LMS', port: 5001, status: backendStatus.match, color: 'bg-gradient-to-r from-indigo-500 to-purple-500' },
-                      { id: 'MERP', port: 5002, status: backendStatus.services, color: 'bg-gradient-to-r from-violet-500 to-pink-500' },
-                      { id: 'CAT', port: 5003, status: backendStatus.category, color: 'bg-gradient-to-r from-purple-500 to-violet-500' },
-                      { id: 'REDSHIFT', port: 5004, status: backendStatus.complaints, color: 'bg-gradient-to-r from-rose-500 to-pink-500' },
+                      { id: 'LMS', port: 5001, status: backendStatus.match, color: 'bg-gradient-to-r from-blue-500 to-cyan-500' },
+                      { id: 'MERP', port: 5002, status: backendStatus.services, color: 'bg-gradient-to-r from-sky-500 to-teal-500' },
+                      { id: 'CAT', port: 5003, status: backendStatus.category, color: 'bg-gradient-to-r from-cyan-500 to-sky-500' },
+                      { id: 'REDSHIFT', port: 5004, status: backendStatus.complaints, color: 'bg-gradient-to-r from-rose-500 to-teal-500' },
                       { id: 'RATINGS', port: 5005, status: backendStatus.ratings, color: 'bg-gradient-to-r from-amber-500 to-orange-500' },
-                      { id: 'FRAUD', port: 5006, status: backendStatus.fraud, color: 'bg-gradient-to-r from-pink-500 to-rose-500' },
+                      { id: 'FRAUD', port: 5006, status: backendStatus.fraud, color: 'bg-gradient-to-r from-teal-500 to-rose-500' },
                       { id: 'OVERVIEW', port: 5007, status: backendStatus.overview, color: 'bg-gradient-to-r from-cyan-500 to-blue-500' },
                       { id: 'SUMMARY', port: 5008, status: backendStatus.summary, color: 'bg-gradient-to-r from-teal-500 to-cyan-500' },
                       { id: 'SHEETS', port: 'Cloud', status: true, color: 'bg-gradient-to-r from-green-500 to-emerald-500' },
@@ -2238,7 +2313,7 @@ import { Coins } from 'lucide-react';
                 {isAdmin && (
                 <button 
                   onClick={() => setIsTokenAnalysisOpen(true)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 border border-indigo-200/60 shadow-sm hover:shadow-md"
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-cyan-50 hover:from-blue-100 hover:to-cyan-100 text-blue-700 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 border border-blue-200/60 shadow-sm hover:shadow-md"
                 >
                   <Coins className="w-4 h-4" />
                   Token Analysis
@@ -2246,11 +2321,7 @@ import { Coins } from 'lucide-react';
                 )}
                 {involvedGLIDs && involvedGLIDs.length > 0 && (
                   <>
-                    <button 
-                      onClick={handleSaveSession}
-                      disabled={isSavingSession}
-                      className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 text-emerald-700 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 border border-emerald-200/60 shadow-sm hover:shadow-md"
-                    >
+                    <button onClick={handleSaveSession} disabled={isSavingSession} className="flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 hover: hover: text-emerald-700 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 border border-emerald-200/60 shadow-sm hover:shadow-md">
                       {isSavingSession ? (
                         <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
                       ) : (
@@ -2264,28 +2335,18 @@ import { Coins } from 'lucide-react';
                         // Default select all GLIDs
                         setSelectedSuspectGLIDs(involvedGLIDs.filter(s => s && s.glId).map(s => s.glId));
                       }}
-                      className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-indigo-500/25 hover:shadow-2xl hover:shadow-indigo-500/40"
+                      className="flex items-center gap-2 bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 hover:from-blue-700 hover:via-cyan-700 hover:to-teal-700 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-blue-500/25 hover:shadow-2xl hover:shadow-blue-500/40"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                       Export Data
                     </button>
                   </>
                 )}
-                <a 
-                  href="https://cybercrime.gov.in/Webform/Crime_AuthoLogin.aspx?rnt=5" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 bg-gradient-to-r from-rose-600 via-red-600 to-pink-600 hover:from-rose-700 hover:via-red-700 hover:to-pink-700 text-white px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-rose-500/25 hover:shadow-2xl hover:shadow-rose-500/40"
-                >
+                <a href="https://cybercrime.gov.in/Webform/Crime_AuthoLogin.aspx?rnt=5"target="_blank"rel="noreferrer"className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 hover: hover: hover: text-white px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-rose-500/25 hover:shadow-2xl hover:shadow-rose-500/40">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                   Report User on Cyber Crime
                 </a>
-                <a 
-                  href="https://services.gst.gov.in/services/searchtp" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="flex items-center gap-2 bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 hover:from-green-700 hover:via-emerald-700 hover:to-teal-700 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-green-500/25 hover:shadow-2xl hover:shadow-green-500/40"
-                >
+                <a href="https://services.gst.gov.in/services/searchtp"target="_blank"rel="noreferrer"className="flex items-center gap-2 bg-green-600 hover:bg-green-700 hover: hover: hover: text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-green-500/25 hover:shadow-2xl hover:shadow-green-500/40">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   Check GST Status
                 </a>
@@ -2293,12 +2354,7 @@ import { Coins } from 'lucide-react';
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col items-end">
                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">User Profile</span>
-                    <button 
-                      onClick={fetchUserProductivity}
-                      disabled={isLoadingProductivity}
-                      className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-indigo-500/25 hover:shadow-2xl hover:shadow-indigo-500/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
-                      title="Click to view productivity stats"
-                    >
+                    <button onClick={fetchUserProductivity} disabled={isLoadingProductivity} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 hover: hover: hover: text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-xl shadow-blue-500/25 hover:shadow-2xl hover:shadow-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"title="Click to view productivity stats">
                       {isLoadingProductivity ? (
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       ) : (
@@ -2339,7 +2395,7 @@ import { Coins } from 'lucide-react';
           </div>
         </div>
 
-        <div className="max-w-full mx-auto p-4 md:p-8">
+        <div className="max-w-[1600px] w-full mx-auto p-4 md:p-8 xl:p-10">
           {error && (
             <div className="mb-4 bg-gradient-to-r from-rose-50 to-red-50 border border-rose-200/60 text-rose-700 px-4 py-2.5 rounded-2xl text-[10px] font-bold flex items-center gap-3 shadow-sm">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -2349,40 +2405,40 @@ import { Coins } from 'lucide-react';
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-3 space-y-8">
-              <section className="bg-white/80 backdrop-blur-sm rounded-[2rem] border border-slate-200/40 p-8 shadow-xl shadow-slate-900/5 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 group">
+              <section className="bg-white/80 backdrop-blur-sm rounded-[2rem] border border-slate-200/40 p-8 shadow-xl shadow-slate-900/5 hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500 group">
                 <div className="flex items-center gap-4 mb-8 pb-4 border-b border-slate-100/60">
-                  <div className="p-3 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl text-white shadow-xl shadow-indigo-500/25 group-hover:scale-110 transition-transform duration-300">
+                  <div className="p-3 bg-gradient-to-br from-blue-500 via-cyan-500 to-teal-500 rounded-2xl text-white shadow-xl shadow-blue-500/25 group-hover:scale-110 transition-transform duration-300">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                   </div>
                   <div>
                     <h2 className="text-sm font-black text-slate-900 uppercase tracking-widest bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">Parameters</h2>
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Intelligence Config</p>
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">Intelligence Config</p>
                   </div>
                 </div>
                 <form onSubmit={handleFetch} className="flex flex-col gap-5">
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Buyer's GL USER ID</label>
-                    <input type="text" value={settings.glId} onChange={e => setSettings({...settings, glId: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all duration-300 font-bold text-slate-700 shadow-sm hover:shadow-md" />
+                    <input type="text" value={settings.glId} onChange={e => setSettings({...settings, glId: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all duration-300 font-bold text-slate-700 shadow-sm hover:shadow-md" />
                   </div>
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Disputed Product Name</label>
-                    <input type="text" placeholder="e.g. Solar Panels" value={settings.productName} onChange={e => setSettings({...settings, productName: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" />
+                    <input type="text" placeholder="e.g. Solar Panels" value={settings.productName} onChange={e => setSettings({...settings, productName: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" />
                   </div>
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Auth Token (AK)</label>
-                    <input type="text" placeholder="Enter Auth Token (AK)" value={settings.authToken} onChange={e => setSettings({...settings, authToken: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" />
+                    <input type="text" placeholder="Enter Auth Token (AK)" value={settings.authToken} onChange={e => setSettings({...settings, authToken: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Start Date</label>
-                      <input type="date" value={settings.startDate} onChange={e => setSettings({...settings, startDate: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-300 shadow-sm hover:shadow-md" />
+                      <input type="date" value={settings.startDate} onChange={e => setSettings({...settings, startDate: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 shadow-sm hover:shadow-md" />
                     </div>
                     <div className="space-y-2">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Start Time</label>
                       <select 
                         value={settings.startTime} 
                         onChange={e => setSettings({...settings, startTime: e.target.value})} 
-                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-300 appearance-none cursor-pointer shadow-sm hover:shadow-md"
+                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 appearance-none cursor-pointer shadow-sm hover:shadow-md"
                       >
                         {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -2391,14 +2447,14 @@ import { Coins } from 'lucide-react';
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">End Date</label>
-                      <input type="date" value={settings.endDate} onChange={e => setSettings({...settings, endDate: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-300 shadow-sm hover:shadow-md" />
+                      <input type="date" value={settings.endDate} onChange={e => setSettings({...settings, endDate: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 shadow-sm hover:shadow-md" />
                     </div>
                     <div className="space-y-2">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">End Time</label>
                       <select 
                         value={settings.endTime} 
                         onChange={e => setSettings({...settings, endTime: e.target.value})} 
-                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 transition-all duration-300 appearance-none cursor-pointer shadow-sm hover:shadow-md"
+                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-4 py-3 text-[11px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 appearance-none cursor-pointer shadow-sm hover:shadow-md"
                       >
                         {timeOptions.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -2413,7 +2469,7 @@ import { Coins } from 'lucide-react';
                         placeholder="0.00" 
                         value={settings.disputedAmount} 
                         onChange={e => setSettings({...settings, disputedAmount: e.target.value})} 
-                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl pl-10 pr-5 py-3 text-sm focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" 
+                        className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl pl-10 pr-5 py-3 text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" 
                       />
                     </div>
                   </div>
@@ -2421,7 +2477,7 @@ import { Coins } from 'lucide-react';
                   <div className="pt-6 border-t border-slate-100/60 mt-4">
                     <div className="flex justify-between items-center mb-4">
                       <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest">Documents</label>
-                      <span className="text-[9px] font-black text-indigo-600 bg-gradient-to-r from-indigo-50 to-purple-50 px-2 py-1 rounded-md border border-indigo-200/60">MAX 10MB</span>
+                      <span className="text-[9px] font-black text-blue-600 bg-gradient-to-r from-blue-50 to-cyan-50 px-2 py-1 rounded-md border border-blue-200/60">MAX 10MB</span>
                     </div>
                     <div className="flex flex-col gap-4">
                       <input 
@@ -2434,12 +2490,12 @@ import { Coins } from 'lucide-react';
                       />
                       <label 
                         htmlFor="doc-upload"
-                        className="flex items-center justify-center gap-4 px-4 py-4 bg-gradient-to-r from-slate-50 to-slate-25 border-2 border-dashed border-slate-200/60 rounded-2xl cursor-pointer hover:border-indigo-400 hover:from-indigo-50/50 hover:to-purple-50/50 transition-all duration-300 group shadow-sm hover:shadow-md"
+                        className="flex items-center justify-center gap-4 px-4 py-4 bg-gradient-to-r from-slate-50 to-slate-25 border-2 border-dashed border-slate-200/60 rounded-2xl cursor-pointer hover:border-blue-400 hover:from-blue-50/50 hover:to-cyan-50/50 transition-all duration-300 group shadow-sm hover:shadow-md"
                       >
-                        <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl shadow-sm group-hover:scale-110 transition-all duration-300">
-                          <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-cyan-100 rounded-xl shadow-sm group-hover:scale-110 transition-all duration-300">
+                          <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
                         </div>
-                        <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest group-hover:text-indigo-700 transition-colors">Upload Evidence</span>
+                        <span className="text-[11px] font-black text-slate-700 uppercase tracking-widest group-hover:text-blue-700 transition-colors">Upload Evidence</span>
                       </label>
 
                       <p className="text-[9px] font-bold text-slate-500 text-center">Supports: Images, PDF, or ZIP files (ZIP files will be automatically extracted)</p>
@@ -2466,7 +2522,7 @@ import { Coins } from 'lucide-react';
                             <button 
                               type="button"
                               onClick={() => setIsFileListModalOpen(true)}
-                              className="w-full py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 hover:text-indigo-600 transition-all"
+                              className="w-full py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 hover:text-blue-600 transition-all"
                             >
                               + {attachedFiles.length - 3} More Files (View All)
                             </button>
@@ -2474,12 +2530,7 @@ import { Coins } from 'lucide-react';
                         </div>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={handleScanDocuments}
-                        disabled={isScanning || attachedFiles.length === 0}
-                        className={`flex items-center justify-center gap-3 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${isScanning || attachedFiles.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-xl shadow-indigo-100 active:scale-95'}`}
-                      >
+                      <button type="button"onClick={handleScanDocuments} disabled={isScanning || attachedFiles.length === 0} className={`flex items-center justify-center gap-3 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${isScanning || attachedFiles.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white hover: hover: shadow-xl shadow-blue-100 active:scale-95'}`} >
                         {isScanning ? (
                           <>
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -2494,13 +2545,13 @@ import { Coins } from 'lucide-react';
                       </button>
 
                       {isScanning && (
-                        <div className="space-y-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
-                          <div className="flex justify-between text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                        <div className="space-y-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                          <div className="flex justify-between text-[10px] font-black text-blue-600 uppercase tracking-widest">
                             <span>AI OCR Engine</span>
                             <span>{Math.round(scanProgress)}%</span>
                           </div>
-                          <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-indigo-100">
-                            <div className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-300 shadow-[0_0_12px_rgba(99,102,241,0.4)]" style={{ width: `${scanProgress}%` }}></div>
+                          <div className="w-full h-2 bg-white rounded-full overflow-hidden border border-blue-100">
+                            <div className="h-full bg-gradient-to-r from-blue-500 to-sky-500 transition-all duration-300 shadow-[0_0_12px_rgba(99,102,241,0.4)]" style={{ width: `${scanProgress}%` }}></div>
                           </div>
                         </div>
                       )}
@@ -2508,12 +2559,7 @@ import { Coins } from 'lucide-react';
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 mt-8">
-                    <button 
-                      type="button"
-                      onClick={handleFetch}
-                      disabled={isSyncing}
-                      className={`py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] text-white transition-all transform active:scale-95 shadow-2xl ${isSyncing ? 'bg-gradient-to-r from-slate-200 to-slate-300 text-slate-400 cursor-not-allowed shadow-slate-200' : 'bg-gradient-to-r from-slate-900 via-slate-800 to-black hover:from-slate-800 hover:via-slate-700 hover:to-slate-900 shadow-slate-900/30 hover:shadow-slate-900/50'}`}
-                    >
+                    <button type="button"onClick={handleFetch} disabled={isSyncing} className={`py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] text-white transition-all transform active:scale-95 shadow-2xl ${isSyncing ? 'bg-slate-200 hover:bg-slate-300 text-slate-400 cursor-not-allowed shadow-slate-200' : 'bg-slate-200 hover:bg-slate-300 to-black hover: hover: hover: shadow-slate-900/30 hover:shadow-slate-900/50'}`} >
                       {isSyncing ? (
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -2521,12 +2567,7 @@ import { Coins } from 'lucide-react';
                         </div>
                       ) : 'Fetch Data'}
                     </button>
-                    <button 
-                      type="button"
-                      onClick={handleAnalyse}
-                      disabled={isAnalyzingGLIDs || !cslTableData || !matchmakingData}
-                      className={`py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] text-white transition-all transform active:scale-95 shadow-2xl ${isAnalyzingGLIDs || !cslTableData || !matchmakingData ? 'bg-gradient-to-r from-slate-100 to-slate-200 text-slate-300 cursor-not-allowed shadow-slate-100' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:via-purple-700 hover:to-pink-700 shadow-indigo-500/30 hover:shadow-indigo-500/50'}`}
-                    >
+                    <button type="button"onClick={handleAnalyse} disabled={isAnalyzingGLIDs || !cslTableData || !matchmakingData} className={`py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] text-white transition-all transform active:scale-95 shadow-2xl ${isAnalyzingGLIDs || !cslTableData || !matchmakingData ? 'bg-slate-100 hover:bg-slate-200 text-slate-300 cursor-not-allowed shadow-slate-100' : 'bg-slate-100 hover:bg-slate-200 hover: hover: hover: shadow-blue-500/30 hover:shadow-blue-500/50'}`} >
                       {isAnalyzingGLIDs ? (
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -2575,8 +2616,8 @@ import { Coins } from 'lucide-react';
                     {[
                       { label: 'Names', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', data: scanResults.names, color: 'text-blue-500', bg: 'bg-blue-50' },
                       { label: 'Phone Numbers', icon: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z', data: scanResults.phoneNumbers, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                      { label: 'Emails', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', data: scanResults.emails, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-                      { label: 'UPI ID of Receiver', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', data: scanResults.upiIds, color: 'text-violet-500', bg: 'bg-violet-50' },
+                      { label: 'Emails', icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', data: scanResults.emails, color: 'text-blue-500', bg: 'bg-blue-50' },
+                      { label: 'UPI ID of Receiver', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', data: scanResults.upiIds, color: 'text-sky-500', bg: 'bg-sky-50' },
                       { label: 'Address', icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z', data: scanResults.addresses, color: 'text-rose-500', bg: 'bg-rose-50' },
                       { label: 'Invoice Dates', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', data: scanResults.invoiceDates || [], color: 'text-amber-500', bg: 'bg-amber-50' },
                       { label: 'Transaction Dates', icon: 'M5 3v2M19 3v2M3 11h18M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z', data: ((scanResults as any).transactionDates || (scanResults as any).paymentDates || scanResults.invoiceDates) || [], color: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -2591,7 +2632,7 @@ import { Coins } from 'lucide-react';
                         <div className="flex flex-wrap gap-2">
                           {group.data && group.data.length > 0 ? (
                             group.data.map((item, i) => (
-                              <span key={i} className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-700 shadow-sm hover:border-indigo-200 hover:text-indigo-600 transition-all">
+                              <span key={i} className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-[10px] font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:text-blue-600 transition-all">
                                 {item}
                               </span>
                             ))
@@ -2653,22 +2694,22 @@ import { Coins } from 'lucide-react';
                   </div>
                   <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
                       RATINGS STREAM
                     </h3>
                     <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
-                      <pre className="text-indigo-400 font-mono text-[10px] leading-relaxed">
+                      <pre className="text-blue-400 font-mono text-[10px] leading-relaxed">
                         {rawRatingsResponse ? JSON.stringify(rawRatingsResponse, null, 2) : '// Awaiting ratings...'}
                       </pre>
                     </div>
                   </div>
                   <div className="flex flex-col">
                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-pink-500 rounded-full"></div>
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full"></div>
                       FRAUD STREAM
                     </h3>
                     <div className="rounded-2xl bg-black/40 p-3 border border-slate-800/50">
-                      <pre className="text-pink-400 font-mono text-[10px] leading-relaxed">
+                      <pre className="text-teal-400 font-mono text-[10px] leading-relaxed">
                         {rawFraudResponse ? JSON.stringify(rawFraudResponse, null, 2) : '// Awaiting fraud data...'}
                       </pre>
                     </div>
@@ -2678,26 +2719,23 @@ import { Coins } from 'lucide-react';
             </div>
 
             <div className="lg:col-span-9 space-y-8">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[900px]">
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full min-h-[600px]">
                 <div className="border-b border-slate-100 px-8 py-6 flex items-center justify-between bg-gradient-to-r from-slate-50/50 to-white">
                   <div className="flex items-center gap-4">
-                    <div className="w-2 h-8 bg-indigo-600 rounded-full"></div>
+                    <div className="w-2 h-8 bg-blue-600 rounded-full"></div>
                     <h2 className="text-2xl font-black text-slate-900 tracking-tight">Operational Workspace</h2>
                   </div>
                   <div className="flex items-center gap-4">
                     {showReanalyzeButton && !isAnalyzingGLIDs && !isSyncing && (
-                      <button 
-                        onClick={handleReanalyze}
-                        className="flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-indigo-100 transition-all transform active:scale-95"
-                      >
+                      <button onClick={handleReanalyze} className="flex items-center gap-3 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 hover: hover: text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-blue-100 transition-all transform active:scale-95">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a2 2 0 00-1.96 1.414l-.598 2.39a2 2 0 002.564 2.457l2.39-.598a2 2 0 001.414-1.96l-.477-2.387a2 2 0 00-.547-1.022zm0 0l-5.428-5.428m0 0l-5.428-5.428a2 2 0 10-2.828 2.828l5.428 5.428m0 0l-5.428 5.428a2 2 0 102.828 2.828l5.428-5.428z"></path></svg>
                         Neural Re-Analysis
                       </button>
                     )}
                     {(isSyncing || isAnalyzingGLIDs) && (
-                      <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Processing Intelligence...</span>
+                      <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-xl border border-blue-100">
+                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Processing Intelligence...</span>
                       </div>
                     )}
                   </div>
@@ -2738,7 +2776,7 @@ import { Coins } from 'lucide-react';
                             <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100">
                               <span className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Visibility Controls</span>
                               <div className="flex gap-3">
-                                  <button onClick={() => setVisibleCslColumns(cslParameters)} className="text-[10px] font-black text-indigo-600 uppercase hover:underline tracking-widest">Select All</button>
+                                  <button onClick={() => setVisibleCslColumns(cslParameters)} className="text-[10px] font-black text-blue-600 uppercase hover:underline tracking-widest">Select All</button>
                                   <button onClick={() => setVisibleCslColumns([])} className="text-[10px] font-black text-rose-600 uppercase hover:underline tracking-widest">Clear All</button>
                               </div>
                             </div>
@@ -2749,7 +2787,7 @@ import { Coins } from 'lucide-react';
                                     type="checkbox" 
                                     checked={visibleCslColumns.includes(param)}
                                     onChange={() => toggleCslColumn(param)}
-                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 transition-all cursor-pointer"
+                                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
                                   />
                                   <span className={`text-[11px] font-bold truncate ${visibleCslColumns.includes(param) ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-500'}`}>
                                     {param}
@@ -2767,7 +2805,7 @@ import { Coins } from 'lucide-react';
                         {cslTableData !== null ? (
                           <>
                             <table className="w-full text-left border-collapse" style={{ minWidth: `${(visibleCslColumns.length * 180) + 64}px` }}>
-                              <thead className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-black uppercase tracking-widest shadow-sm">
+                              <thead className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-600 text-white text-[11px] font-black uppercase tracking-widest shadow-sm">
                                 <tr>
                                   <th className="sticky top-0 px-6 py-4 border-r border-white/10 text-center w-20 bg-inherit">#</th>
                                   {cslParameters.map((param) => visibleCslColumns.includes(param) && (
@@ -2801,7 +2839,7 @@ import { Coins } from 'lucide-react';
                                 <button 
                                   onClick={handleCslNext}
                                   disabled={cslPagination.isFetchingMore}
-                                  className="px-8 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-100 transition-all disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2"
+                                  className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-blue-100 transition-all disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-2"
                                 >
                                   {cslPagination.isFetchingMore ? (
                                     <>
@@ -2827,12 +2865,12 @@ import { Coins } from 'lucide-react';
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="space-y-1">
                         <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3">
-                          <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg">
+                          <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 005.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                           </div>
                           Matchmaking Intelligence
                           {filteredMatchmakingData && (
-                            <span className="ml-2 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[10px] font-black border border-indigo-100">
+                            <span className="ml-2 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-black border border-blue-100">
                               {filteredMatchmakingData.length} Connections
                             </span>
                           )}
@@ -2861,7 +2899,7 @@ import { Coins } from 'lucide-react';
                             <div className="relative" ref={matchColumnSelectorRef}>
                               <button 
                                 onClick={() => setIsMatchColumnSelectorOpen(!isMatchColumnSelectorOpen)}
-                                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-all shadow-sm"
+                                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-blue-400 hover:text-blue-600 transition-all shadow-sm"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
                                 Columns
@@ -2873,7 +2911,7 @@ import { Coins } from 'lucide-react';
                                   <div className="flex items-center justify-between mb-6 pb-3 border-b border-slate-100">
                                     <span className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Visibility Controls</span>
                                     <div className="flex gap-3">
-                                        <button onClick={() => setVisibleMatchColumns(matchParameters)} className="text-[10px] font-black text-indigo-600 uppercase hover:underline tracking-widest">Select All</button>
+                                        <button onClick={() => setVisibleMatchColumns(matchParameters)} className="text-[10px] font-black text-blue-600 uppercase hover:underline tracking-widest">Select All</button>
                                         <button onClick={() => setVisibleMatchColumns([])} className="text-[10px] font-black text-rose-600 uppercase hover:underline tracking-widest">Clear All</button>
                                     </div>
                                   </div>
@@ -2884,7 +2922,7 @@ import { Coins } from 'lucide-react';
                                           type="checkbox" 
                                           checked={visibleMatchColumns.includes(param)}
                                           onChange={() => toggleMatchColumn(param)}
-                                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 transition-all cursor-pointer"
+                                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer"
                                         />
                                         <span className={`text-[11px] font-bold truncate ${visibleMatchColumns.includes(param) ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-500'}`}>
                                           {param}
@@ -2902,7 +2940,7 @@ import { Coins } from 'lucide-react';
                         <div className="overflow-x-auto">
                           {filteredMatchmakingData !== null ? (
                             <table className="w-full text-left border-collapse" style={{ minWidth: `${(visibleMatchColumns.length * 180) + 64}px` }}>
-                              <thead className="sticky top-0 z-10 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[11px] font-black uppercase tracking-widest">
+                              <thead className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-sky-600 text-white text-[11px] font-black uppercase tracking-widest">
                                 <tr>
                                   <th className="px-6 py-4 border-r border-white/10 text-center w-20">#</th>
                                   <th className="px-6 py-4 border-r border-white/10 text-center w-20">Actions</th>
@@ -2914,8 +2952,8 @@ import { Coins } from 'lucide-react';
                               <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-bold">
                                 {filteredMatchmakingData.length > 0 ? (
                                   filteredMatchmakingData.map((rec, i) => (
-                                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors group">
-                                      <td className="px-6 py-4 border-r border-slate-100 text-center font-black bg-slate-50/50 text-slate-400 group-hover:text-indigo-600">{i + 1}</td>
+                                    <tr key={i} className="hover:bg-blue-50/30 transition-colors group">
+                                      <td className="px-6 py-4 border-r border-slate-100 text-center font-black bg-slate-50/50 text-slate-400 group-hover:text-blue-600">{i + 1}</td>
                                       <td className="px-6 py-4 border-r border-slate-100 text-center">
                                         <button 
                                           onClick={() => handleDeleteMatchmakingRow(rec)}
@@ -2984,7 +3022,7 @@ import { Coins } from 'lucide-react';
                           <div className="flex flex-col items-end gap-3 bg-rose-50 px-6 py-3 rounded-2xl border border-rose-100">
                               <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Neural Scan: {analysisProgress}%</span>
                               <div className="w-48 h-2 bg-white rounded-full overflow-hidden border border-rose-100">
-                                <div className="h-full bg-gradient-to-r from-rose-500 to-pink-500 transition-all duration-300 shadow-[0_0_10px_rgba(244,63,94,0.4)]" style={{ width: `${analysisProgress}%` }}></div>
+                                <div className="h-full bg-gradient-to-r from-rose-500 to-teal-500 transition-all duration-300 shadow-[0_0_10px_rgba(244,63,94,0.4)]" style={{ width: `${analysisProgress}%` }}></div>
                               </div>
                           </div>
                         )}
@@ -3193,14 +3231,14 @@ import { Coins } from 'lucide-react';
                       <div className="flex items-center justify-between">
                         <div className="space-y-2">
                           <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-4">
-                            <div className="w-3 h-3 bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)]"></div>
+                            <div className="w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)]"></div>
                             Additional Comments & Evidence
                           </h3>
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Store manual findings, notes, and screenshots for this session</p>
                         </div>
                       </div>
 
-                      <div className="flex flex-col border-2 border-slate-200 rounded-[2.5rem] overflow-hidden bg-white focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-50 transition-all shadow-sm">
+                      <div className="flex flex-col border-2 border-slate-200 rounded-[2.5rem] overflow-hidden bg-white focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-50 transition-all shadow-sm">
                         {/* Gmail-like Toolbar */}
                         <div className="flex items-center gap-1 p-3 bg-slate-50 border-b border-slate-200 flex-wrap">
                           <button onClick={() => execCommand('bold')} className="p-2 hover:bg-slate-200 rounded-xl transition-colors text-slate-600" title="Bold"><Bold size={18} /></button>
@@ -3281,7 +3319,7 @@ import { Coins } from 'lucide-react';
                       <div className="flex items-center justify-between">
                         <div className="space-y-2">
                           <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-4">
-                            <div className="w-3 h-3 bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.6)]"></div>
+                            <div className="w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.6)]"></div>
                             Fraud Network Analysis
                           </h3>
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">LMS Interaction Logs & Disputed Contacts</p>
@@ -3294,13 +3332,13 @@ import { Coins } from 'lucide-react';
                               placeholder="Enter Disputed Contact Number" 
                               value={settings.disputedContactNumber || ''} 
                               onChange={e => setSettings({...settings, disputedContactNumber: e.target.value})} 
-                              className="bg-white border border-slate-200 rounded-xl px-5 py-3 text-xs font-bold w-[300px] focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                              className="bg-white border border-slate-200 rounded-xl px-5 py-3 text-xs font-bold w-[300px] focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all"
                             />
                           </div>
                           <button 
                             onClick={handleFraudSearch}
                             disabled={isFraudSearching || !settings.disputedContactNumber}
-                            className={`px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all flex items-center gap-3 shadow-xl ${isFraudSearching || !settings.disputedContactNumber ? 'bg-slate-200 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100 active:scale-95'}`}
+                            className={`px-8 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all flex items-center gap-3 shadow-xl ${isFraudSearching || !settings.disputedContactNumber ? 'bg-slate-200 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}
                           >
                             {isFraudSearching ? (
                               <>
@@ -3332,8 +3370,8 @@ import { Coins } from 'lucide-react';
                                 <tbody className="text-xs font-bold text-slate-600 divide-y divide-slate-100">
                                   {lmsFraudLogs.length > 0 ? (
                                     lmsFraudLogs.map((log, i) => (
-                                      <tr key={i} className="hover:bg-indigo-50/30 transition-all group">
-                                        <td className="px-8 py-5 border-r border-slate-50 text-center bg-slate-50/30 text-slate-400 group-hover:text-indigo-600">{i + 1}</td>
+                                      <tr key={i} className="hover:bg-blue-50/30 transition-all group">
+                                        <td className="px-8 py-5 border-r border-slate-50 text-center bg-slate-50/30 text-slate-400 group-hover:text-blue-600">{i + 1}</td>
                                         <td className="px-8 py-5 border-r border-slate-50 group-hover:text-slate-900">{log.receiver_id || '-'}</td>
                                         <td className="px-8 py-5 border-r border-slate-50 group-hover:text-slate-900">{log.sender_id || '-'}</td>
                                         <td className="px-8 py-5 font-mono text-slate-500 group-hover:text-slate-900">{log.timestamp || '-'}</td>
@@ -3356,7 +3394,7 @@ import { Coins } from 'lucide-react';
                             </div>
                           ) : isFraudSearching ? (
                             <div className="flex flex-col items-center justify-center py-32 gap-6">
-                              <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                               <span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] animate-pulse">Scanning Fraud Network...</span>
                             </div>
                           ) : (
@@ -3386,7 +3424,7 @@ import { Coins } from 'lucide-react';
             <div className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl">
+                  <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                   </div>
                   <div>
@@ -3405,7 +3443,7 @@ import { Coins } from 'lucide-react';
               <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
                 <div className="grid grid-cols-1 gap-3">
                   {attachedFiles.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between bg-slate-50 px-6 py-4 rounded-2xl text-xs font-bold text-slate-700 border border-slate-100 group hover:border-indigo-200 hover:bg-white transition-all">
+                    <div key={i} className="flex items-center justify-between bg-slate-50 px-6 py-4 rounded-2xl text-xs font-bold text-slate-700 border border-slate-100 group hover:border-blue-200 hover:bg-white transition-all">
                       <div className="flex items-center gap-4 truncate">
                         <div className="p-2 bg-white rounded-xl shadow-sm">
                           <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -3449,7 +3487,7 @@ import { Coins } from 'lucide-react';
             <div className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
               <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                  <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-100">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                   </div>
                   <div>
@@ -3471,17 +3509,17 @@ import { Coins } from 'lucide-react';
                     { id: 'matchmaking', label: 'Matchmaking Intelligence', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
                     { id: 'networkSuspect', label: 'Network Suspect Intelligence', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
                   ].map((opt) => (
-                    <div key={opt.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${opt.disabled ? 'opacity-40 grayscale cursor-not-allowed bg-slate-50 border-slate-100' : 'bg-white border-slate-200 hover:border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/5 cursor-pointer'}`}
+                    <div key={opt.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${opt.disabled ? 'opacity-40 grayscale cursor-not-allowed bg-slate-50 border-slate-100' : 'bg-white border-slate-200 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/5 cursor-pointer'}`}
                       onClick={() => !opt.disabled && setExportOptions({...exportOptions, [opt.id as keyof typeof exportOptions]: !exportOptions[opt.id as keyof typeof exportOptions]})}
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-xl ${exportOptions[opt.id as keyof typeof exportOptions] ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
+                        <div className={`p-2 rounded-xl ${exportOptions[opt.id as keyof typeof exportOptions] ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={opt.icon}></path></svg>
                         </div>
                         <span className="text-xs font-black text-slate-700 uppercase tracking-widest">{opt.label}</span>
                       </div>
                       {!opt.disabled && (
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${exportOptions[opt.id as keyof typeof exportOptions] ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-200'}`}>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${exportOptions[opt.id as keyof typeof exportOptions] ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200'}`}>
                           {exportOptions[opt.id as keyof typeof exportOptions] && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
                         </div>
                       )}
@@ -3502,7 +3540,7 @@ import { Coins } from 'lucide-react';
                               if (e.target.checked) setSelectedSuspectGLIDs([...selectedSuspectGLIDs, s.glId]);
                               else setSelectedSuspectGLIDs(selectedSuspectGLIDs.filter(id => id !== s.glId));
                             }}
-                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-[11px] font-bold text-slate-600">{s.glId}</span>
                         </label>
@@ -3523,7 +3561,7 @@ import { Coins } from 'lucide-react';
                 <button 
                   onClick={handleExport}
                   disabled={isExporting}
-                  className="flex-[2] px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-3"
+                  className="flex-[2] px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-blue-600 hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
                   {isExporting ? (
                     <>
@@ -3563,7 +3601,7 @@ import { Coins } from 'lucide-react';
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
                 {isMerpLoading ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-4">
-                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading Basic Info...</span>
                   </div>
                 ) : companyOverviewData ? (
@@ -3580,7 +3618,7 @@ import { Coins } from 'lucide-react';
                       </div>
                       <div className="space-y-1">
                         <label className="text-[11px] font-black text-slate-400 uppercase tracking-tight">Primary Contact</label>
-                        <p className="text-sm font-bold text-indigo-600">
+                        <p className="text-sm font-bold text-blue-600">
                           {companyOverviewData.client_contact_numbers?.[0]?.value || '-'}
                         </p>
                       </div>
@@ -3591,20 +3629,20 @@ import { Coins } from 'lucide-react';
                     </div>
 
                     {/* Performance Stats */}
-                    <div className="grid grid-cols-4 gap-4 bg-indigo-50/50 rounded-2xl p-5 border border-indigo-100 shadow-sm">
+                    <div className="grid grid-cols-4 gap-4 bg-blue-50/50 rounded-2xl p-5 border border-blue-100 shadow-sm">
                       <div className="text-center">
-                        <label className="text-[10px] font-black text-indigo-400 uppercase block mb-1">CQS</label>
-                        <span className="text-sm font-black text-indigo-700">{companyOverviewData.csd_data?.CQS || '-'}</span>
+                        <label className="text-[10px] font-black text-blue-400 uppercase block mb-1">CQS</label>
+                        <span className="text-sm font-black text-blue-700">{companyOverviewData.csd_data?.CQS || '-'}</span>
                       </div>
-                      <div className="text-center border-l border-indigo-100">
+                      <div className="text-center border-l border-blue-100">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Enquiry</label>
                         <span className="text-sm font-black text-slate-900">{companyOverviewData.csd_data?.Enquiry || '-'}</span>
                       </div>
-                      <div className="text-center border-l border-indigo-100">
+                      <div className="text-center border-l border-blue-100">
                         <label className="text-[10px] font-black text-slate-400 uppercase block mb-1">Replies</label>
                         <span className="text-sm font-black text-slate-900">{companyOverviewData.csd_data?.Replies || '-'}</span>
                       </div>
-                      <div className="text-center border-l border-indigo-100">
+                      <div className="text-center border-l border-blue-100">
                         <label className="text-[10px] font-black text-amber-500 uppercase block mb-1">Rating</label>
                         <span className="text-sm font-black text-amber-600">{companyOverviewData.csd_data?.supplier_rating || '-'}</span>
                       </div>
@@ -3614,7 +3652,7 @@ import { Coins } from 'lucide-react';
                     <div className="space-y-4">
                       <div className="p-5 border border-slate-100 rounded-2xl space-y-4 bg-white shadow-sm">
                         <div className="flex items-start gap-4">
-                          <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600">
+                          <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                           </div>
                           <div className="flex-1">
@@ -3624,7 +3662,7 @@ import { Coins } from 'lucide-react';
                                 {companyOverviewData.glusr_data?.address}, {companyOverviewData.glusr_data?.city}, {companyOverviewData.glusr_data?.stateCode}
                               </p>
                               {isLatlongLoading ? (
-                                <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                               ) : (
                                 <div className="flex gap-2">
                                   {latlongStatusData && (
@@ -3678,7 +3716,7 @@ import { Coins } from 'lucide-react';
                     {/* Website */}
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Website URL</label>
-                      <a href={companyOverviewData.glusr_data?.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-2 group">
+                      <a href={companyOverviewData.glusr_data?.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-2 group">
                         {companyOverviewData.glusr_data?.url || '-'}
                         <svg className="w-4 h-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                       </a>
@@ -3687,34 +3725,34 @@ import { Coins } from 'lucide-react';
                     {/* Top Bar Summary Metrics */}
                     <div className="space-y-4">
                       <label className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                        <span className="w-1 h-4 bg-indigo-500 rounded-full"></span>
+                        <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
                         Performance Summary (7D / 1M / 3M)
                       </label>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm min-h-[100px] flex flex-col">
                         {isSummaryLoading ? (
                           <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fetching Performance...</span>
                           </div>
                         ) : (
                           <table className="w-full text-left border-collapse">
-                            <thead className="bg-indigo-600 text-[11px] font-black text-white uppercase">
+                            <thead className="bg-blue-600 text-[11px] font-black text-white uppercase">
                               <tr>
                                 <th className="px-5 py-3">Parameter</th>
-                                <th className="px-5 py-3 text-center bg-indigo-700/30">7D</th>
-                                <th className="px-5 py-3 text-center bg-indigo-700/50">1M</th>
-                                <th className="px-5 py-3 text-center bg-indigo-700/70">3M</th>
+                                <th className="px-5 py-3 text-center bg-blue-700/30">7D</th>
+                                <th className="px-5 py-3 text-center bg-blue-700/50">1M</th>
+                                <th className="px-5 py-3 text-center bg-blue-700/70">3M</th>
                               </tr>
                             </thead>
                             <tbody className="text-xs font-bold text-slate-600 divide-y divide-slate-100">
                               {[
                                 { label: 'Enquiries', keys: ['enq_lw', 'enq_lm', 'enq_lq'], color: 'bg-blue-50/30' },
                                 { label: 'LMS Replies', keys: ['qry_reply_lw', 'qry_reply_lm', 'qry_reply_lq'], color: 'bg-emerald-50/30' },
-                                { label: 'Calls%', keys: ['pns_lw', 'pns_lm', 'pns_lq'], color: 'bg-violet-50/30' },
+                                { label: 'Calls%', keys: ['pns_lw', 'pns_lm', 'pns_lq'], color: 'bg-sky-50/30' },
                                 { label: 'BL Purchase Frequency', keys: ['bl_lw', 'bl_lm', 'bl_lq'], color: 'bg-amber-50/30' },
                                 { label: 'Call Backs', keys: ['c2c_cnt_lw', 'c2c_cnt_lm', 'c2c_cnt_lq'], color: 'bg-rose-50/30' },
                                 { label: 'BL ACTIVE', keys: ['bl_cat_dau_1w', 'bl_cat_dau_1m', 'bl_cat_dau_1q'], color: 'bg-cyan-50/30' },
-                                { label: 'Lead Manager', keys: ['lms_lw', 'lms_lm', 'lms_lq'], color: 'bg-indigo-50/30' },
+                                { label: 'Lead Manager', keys: ['lms_lw', 'lms_lm', 'lms_lq'], color: 'bg-blue-50/30' },
                                 { label: 'Product Added', keys: ['prd_add_lw', 'prd_add_lm', 'prd_add_lq'], color: 'bg-teal-50/30' },
                                 { label: 'Product Deactivated', keys: ['prd_deac_lw', 'prd_deac_lm', 'prd_deac_lq'], color: 'bg-slate-50/30' },
                               ].map((row, idx) => (
@@ -3873,22 +3911,22 @@ import { Coins } from 'lucide-react';
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                          <span className="w-1 h-4 bg-indigo-500 rounded-full"></span>
+                          <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
                           MCAT Categories
                         </label>
-                        <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm">
+                        <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black uppercase shadow-sm">
                           {mcatData?.length || 0} Total
                         </span>
                       </div>
                       <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar shadow-sm">
                         {isMcatLoading ? (
                           <div className="flex flex-col items-center justify-center py-12 gap-3">
-                            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fetching MCAT Data...</span>
                           </div>
                         ) : (
                           <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 bg-indigo-600 text-[11px] font-black text-white uppercase z-10">
+                            <thead className="sticky top-0 bg-blue-600 text-[11px] font-black text-white uppercase z-10">
                               <tr>
                                 <th className="px-5 py-3 w-16 text-center">#</th>
                                 <th className="px-5 py-3">MCAT Name</th>
@@ -3897,7 +3935,7 @@ import { Coins } from 'lucide-react';
                             <tbody className="text-xs font-bold text-slate-600 divide-y divide-slate-100">
                               {mcatData && mcatData.length > 0 ? (
                                 mcatData.map((name: string, idx: number) => (
-                                  <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
+                                  <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                                     <td className="px-5 py-3 text-center text-slate-400 font-mono">{String(idx + 1).padStart(2, '0')}</td>
                                     <td className="px-5 py-3 text-slate-900 font-bold">{name}</td>
                                   </tr>
@@ -4001,19 +4039,19 @@ import { Coins } from 'lucide-react';
                 {/* Header */}
                 <div className="bg-slate-900 p-8 flex items-center justify-between">
                   <div className="flex items-center gap-5">
-                    <div className="p-4 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20">
+                    <div className="p-4 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
                       <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                     </div>
                     <div>
                       <h2 className="text-2xl font-black text-white uppercase tracking-tighter">Performance Intelligence</h2>
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.3em] mt-1">Global Associate KPI Dashboard</p>
+                      <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.3em] mt-1">Global Associate KPI Dashboard</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     {/* Date Filters */}
                     <div className="flex items-center gap-3 bg-white/5 p-1.5 rounded-2xl border border-white/10">
                       <div className="flex flex-col px-3">
-                        <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">Start Period</span>
+                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Start Period</span>
                         <input 
                           type="date"
                           value={adminStartDate}
@@ -4023,7 +4061,7 @@ import { Coins } from 'lucide-react';
                       </div>
                       <div className="w-[1px] h-8 bg-white/10"></div>
                       <div className="flex flex-col px-3">
-                        <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest mb-1">End Period</span>
+                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">End Period</span>
                         <input 
                           type="date"
                           value={adminEndDate}
@@ -4036,7 +4074,7 @@ import { Coins } from 'lucide-react';
                     <button 
                       onClick={fetchHistory}
                       disabled={isHistoryLoading}
-                      className="flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20"
+                      className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-blue-500/20"
                     >
                       <svg className={`w-4 h-4 ${isHistoryLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                       Sync Realtime Data
@@ -4054,7 +4092,7 @@ import { Coins } from 'lucide-react';
                 <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50/50">
                   {isHistoryLoading && historySessions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full gap-5">
-                      <div className="w-12 h-12 border-4 border-slate-900 border-t-indigo-500 rounded-full animate-spin"></div>
+                      <div className="w-12 h-12 border-4 border-slate-900 border-t-blue-500 rounded-full animate-spin"></div>
                       <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Aggregating Metrics...</span>
                     </div>
                   ) : (
@@ -4062,7 +4100,7 @@ import { Coins } from 'lucide-react';
                       {/* Top KPIs */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                         {[
-                          { label: 'Total Case Studies', value: filteredAdminSessions.length, icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', color: 'indigo' },
+                          { label: 'Total Case Studies', value: filteredAdminSessions.length, icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', color: 'blue' },
                           { label: 'Active Associates', value: Object.keys([...new Set(filteredAdminSessions.map(s => s.saved_by || 'Unknown'))]).length, icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', color: 'emerald' },
                           { label: 'Today\'s Output', value: filteredAdminSessions.filter(s => new Date(s.created_at).toDateString() === new Date().toDateString()).length, icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', color: 'amber' },
                           { label: 'Intelligence Depth', value: 'High', icon: 'M13 10V3L4 14h7v7l9-11h-7z', color: 'rose' }
@@ -4083,7 +4121,7 @@ import { Coins } from 'lucide-react';
                       <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
                         <div className="flex items-center justify-between mb-8">
                           <div className="flex items-center gap-4">
-                            <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-200">
+                            <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200">
                               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
                             </div>
                             <div>
@@ -4092,7 +4130,7 @@ import { Coins } from 'lucide-react';
                             </div>
                           </div>
                           <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
-                             <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                             <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Performance Metrics</span>
                           </div>
                         </div>
@@ -4156,7 +4194,7 @@ import { Coins } from 'lucide-react';
                           {/* Create New Associate */}
                           <div className="bg-slate-50 p-8 rounded-3xl border border-slate-100 h-fit">
                             <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest mb-6 flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                               Enroll New Associate
                             </h4>
                             <form onSubmit={handleCreateAssociate} className="space-y-4">
@@ -4167,7 +4205,7 @@ import { Coins } from 'lucide-react';
                                   value={newAssociateEmail}
                                   onChange={(e) => setNewAssociateEmail(e.target.value)}
                                   placeholder="associate@indiamart.com"
-                                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-3 text-xs focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" 
+                                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-3 text-xs focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-bold text-slate-700" 
                                 />
                               </div>
                               <div className="space-y-2">
@@ -4177,12 +4215,12 @@ import { Coins } from 'lucide-react';
                                   value={newAssociatePassword}
                                   onChange={(e) => setNewAssociatePassword(e.target.value)}
                                   placeholder="Enter Secure Password"
-                                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-3 text-xs focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700" 
+                                  className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-3 text-xs focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-bold text-slate-700" 
                                 />
                               </div>
                               <button 
                                 type="submit"
-                                className="w-full py-4 bg-indigo-600 hover:bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
+                                className="w-full py-4 bg-blue-600 hover:bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-100 transition-all active:scale-[0.98]"
                               >
                                 Authorize Enrollment
                               </button>
@@ -4215,7 +4253,7 @@ import { Coins } from 'lucide-react';
                                       <td className="px-6 py-4">
                                         <div className="flex flex-col">
                                           <span className="text-slate-900">{associate.email}</span>
-                                          <span className="text-[8px] text-indigo-400 uppercase tracking-widest mt-0.5">{associate.role}</span>
+                                          <span className="text-[8px] text-blue-400 uppercase tracking-widest mt-0.5">{associate.role}</span>
                                         </div>
                                       </td>
                                       <td className="px-6 py-4 text-slate-400">
@@ -4297,7 +4335,7 @@ import { Coins } from 'lucide-react';
                         <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
                           <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div className="flex items-center gap-4">
-                              <div className="p-2.5 bg-indigo-600 rounded-xl">
+                              <div className="p-2.5 bg-blue-600 rounded-xl">
                                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
                               </div>
                               <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Associate Output Ranking</h3>
@@ -4339,7 +4377,7 @@ import { Coins } from 'lucide-react';
                                       </div>
                                     </td>
                                     <td className="px-6 py-4 text-center">
-                                      <span className="inline-flex px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full font-black text-[10px]">
+                                      <span className="inline-flex px-3 py-1 bg-blue-50 text-blue-600 rounded-full font-black text-[10px]">
                                         {stats.count}
                                       </span>
                                     </td>
@@ -4366,15 +4404,15 @@ import { Coins } from 'lucide-react';
                           <div className="flex-1 overflow-y-auto p-4 custom-scrollbar max-h-[400px]">
                             <div className="space-y-4">
                               {[...filteredAdminSessions].sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 15).map((session, i) => (
-                                <div key={session.id} className="p-5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-100 transition-all group flex items-center justify-between">
+                                <div key={session.id} className="p-5 bg-white border border-slate-100 rounded-2xl hover:border-blue-100 transition-all group flex items-center justify-between">
                                   <div className="flex items-center gap-4">
-                                    <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-all font-black text-xs">
+                                    <div className="h-10 w-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 group-hover:bg-blue-50 group-hover:text-blue-500 transition-all font-black text-xs">
                                       {session.product_name?.charAt(0) || 'P'}
                                     </div>
                                     <div>
-                                      <div className="text-[11px] font-black text-slate-900 group-hover:text-indigo-600 transition-all">{session.product_name || 'Generic Analysis'}</div>
+                                      <div className="text-[11px] font-black text-slate-900 group-hover:text-blue-600 transition-all">{session.product_name || 'Generic Analysis'}</div>
                                       <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-2">
-                                        <span className="text-indigo-500">{session.gl_id}</span>
+                                        <span className="text-blue-500">{session.gl_id}</span>
                                         <span>•</span>
                                         <span>{session.saved_by?.split('@')[0]}</span>
                                       </div>
@@ -4393,7 +4431,7 @@ import { Coins } from 'lucide-react';
                       {/* Token Usage Intelligence Analytics */}
                       <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
                         <div className="flex items-center gap-4 mb-6">
-                          <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/20">
+                          <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
                             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                           </div>
                           <div>
@@ -4412,7 +4450,7 @@ import { Coins } from 'lucide-react';
                     <div className="w-2 h-2 bg-emerald-500 animate-pulse rounded-full"></div>
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Live Integration Feed Active</span>
                   </div>
-                  <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Administrator: {authEmail}</span>
+                  <span className="text-[9px] font-bold text-blue-400 uppercase tracking-widest">Administrator: {authEmail}</span>
                 </div>
               </motion.div>
             </div>
@@ -4426,7 +4464,7 @@ import { Coins } from 'lucide-react';
               <div className="bg-slate-900 p-8 text-white flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-white/10 rounded-2xl">
-                    <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                   </div>
                   <div>
                     <h2 className="text-xl font-black uppercase tracking-widest">Analysis History</h2>
@@ -4455,7 +4493,7 @@ import { Coins } from 'lucide-react';
                     placeholder="Search by GLID or Product Name..."
                     value={historySearchTerm}
                     onChange={(e) => setHistorySearchTerm(e.target.value)}
-                    className="w-full pl-12 pr-6 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none transition-all text-sm font-bold text-slate-700"
+                    className="w-full pl-12 pr-6 py-4 bg-white border-2 border-slate-200 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all text-sm font-bold text-slate-700"
                   />
                   <svg className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
@@ -4464,7 +4502,7 @@ import { Coins } from 'lucide-react';
               <div className="p-8 max-h-[50vh] overflow-y-auto custom-scrollbar">
                 {isHistoryLoading ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-4">
-                    <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Accessing Vault...</span>
                   </div>
                 ) : historySessions.length > 0 ? (
@@ -4479,7 +4517,7 @@ import { Coins } from 'lucide-react';
                         return glId.includes(searchTerm) || productName.includes(searchTerm) || id.includes(searchTerm);
                       })
                       .map((session) => (
-                      <div key={session.id} className="group flex items-center justify-between p-5 bg-slate-50 border border-slate-200 rounded-3xl hover:border-indigo-300 hover:bg-indigo-50/30 transition-all">
+                      <div key={session.id} className="group flex items-center justify-between p-5 bg-slate-50 border border-slate-200 rounded-3xl hover:border-blue-300 hover:bg-blue-50/30 transition-all">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-3">
                             <span className="text-sm font-black text-slate-900">{session.product_name || 'Generic Analysis'}</span>
@@ -4495,7 +4533,7 @@ import { Coins } from 'lucide-react';
                             {session.saved_by && (
                               <>
                                 <span>•</span>
-                                <span className="text-indigo-500 font-black uppercase text-[8px]">{session.saved_by.split('@')[0].replace('.', ' ')}</span>
+                                <span className="text-blue-500 font-black uppercase text-[8px]">{session.saved_by.split('@')[0].replace('.', ' ')}</span>
                               </>
                             )}
                           </div>
@@ -4503,7 +4541,7 @@ import { Coins } from 'lucide-react';
                         <div className="flex items-center gap-2">
                           <button 
                             onClick={() => loadSession(session.id)}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-100"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-100"
                           >
                             Load
                           </button>
@@ -4532,7 +4570,7 @@ import { Coins } from 'lucide-react';
         {isProductivityModalOpen && userProductivityData && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
             <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
-              <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 p-8 text-white flex items-center justify-between">
+              <div className="bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 p-8 text-white flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-white/10 rounded-2xl">
                     <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
@@ -4594,7 +4632,7 @@ import { Coins } from 'lucide-react';
                   <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest mb-4">Case Study History</h3>
                   <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                     {userProductivityData.caseStudies.map((study) => (
-                      <div key={study.id} className="flex items-center justify-between p-5 bg-slate-50 border border-slate-200 rounded-3xl hover:border-indigo-300 hover:bg-indigo-50/30 transition-all">
+                      <div key={study.id} className="flex items-center justify-between p-5 bg-slate-50 border border-slate-200 rounded-3xl hover:border-blue-300 hover:bg-blue-50/30 transition-all">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-3">
                             <span className="text-sm font-black text-slate-900">{study.product_name || 'Generic Analysis'}</span>
@@ -4614,7 +4652,7 @@ import { Coins } from 'lucide-react';
                             loadSession(study.id);
                             setIsProductivityModalOpen(false);
                           }}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-indigo-100"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-100"
                         >
                           Load Case
                         </button>
