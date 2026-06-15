@@ -123,6 +123,7 @@ import { Coins } from 'lucide-react';
     const [isFileListModalOpen, setIsFileListModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [showWelcomePopup, setShowWelcomePopup] = useState(false);
+    const [spellingSuggestion, setSpellingSuggestion] = useState('');
 
     const [isAuthenticated, setIsAuthenticated] = useState(() => {
       return localStorage.getItem('proxy_auth_status') === 'true';
@@ -134,6 +135,45 @@ import { Coins } from 'lucide-react';
         sessionStorage.setItem('hasSeenWelcomePopup', 'true');
       }
     }, [isAuthenticated]);
+
+    useEffect(() => {
+      const checkSpelling = async () => {
+        if (!settings.productName || settings.productName.length < 3) {
+          setSpellingSuggestion('');
+          return;
+        }
+        try {
+          const params = new URLSearchParams();
+          params.append('text', settings.productName);
+          params.append('language', 'en-US');
+          
+          const res = await fetch('https://api.languagetool.org/v2/check', {
+            method: 'POST',
+            body: params
+          });
+          const data = await res.json();
+          const typos = data.matches?.filter((m: any) => m.rule.issueType === 'misspelling') || [];
+          
+          if (typos.length > 0 && typos[0].replacements.length > 0) {
+            const typo = typos[0];
+            let bestReplacement = typo.replacements[0].value;
+            // specifically prioritize 'chair' if it's a replacement to cover the explicit example
+            const chairMatch = typo.replacements.find((r: any) => r.value.toLowerCase() === 'chair');
+            if (chairMatch) bestReplacement = chairMatch.value;
+            
+            const newText = settings.productName.substring(0, typo.offset) + bestReplacement + settings.productName.substring(typo.offset + typo.length);
+            setSpellingSuggestion(newText);
+          } else {
+            setSpellingSuggestion('');
+          }
+        } catch (e) {
+          setSpellingSuggestion('');
+        }
+      };
+
+      const timer = setTimeout(checkSpelling, 600);
+      return () => clearTimeout(timer);
+    }, [settings.productName]);
     const [authEmail, setAuthEmail] = useState(() => {
       return localStorage.getItem('proxy_auth_email') || '';
     });
@@ -2485,6 +2525,17 @@ import { Coins } from 'lucide-react';
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Disputed Product Name</label>
                     <input type="text" placeholder="e.g. Solar Panels" value={settings.productName} onChange={e => setSettings({...settings, productName: e.target.value})} className="w-full bg-gradient-to-r from-slate-50 to-slate-25 border border-slate-200/60 rounded-2xl px-5 py-3 text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 outline-none transition-all duration-300 font-bold text-slate-700 placeholder:text-slate-400 shadow-sm hover:shadow-md" />
+                    <AnimatePresence>
+                      {spellingSuggestion && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
+                          className="text-[11px] font-bold text-slate-500 ml-2 mt-1 flex items-center gap-1.5"
+                        >
+                          <svg className="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                          Did you mean <button type="button" onClick={() => setSettings({...settings, productName: spellingSuggestion})} className="text-blue-600 hover:text-blue-700 underline decoration-blue-300 underline-offset-2 transition-colors">'{spellingSuggestion}'</button>?
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                   <div className="space-y-2">
                     <label className="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Auth Token (AK)</label>
