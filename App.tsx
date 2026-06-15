@@ -122,10 +122,18 @@ import { Coins } from 'lucide-react';
     const [isStreamsVisible, setIsStreamsVisible] = useState(false);
     const [isFileListModalOpen, setIsFileListModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [showWelcomePopup, setShowWelcomePopup] = useState(false);
 
     const [isAuthenticated, setIsAuthenticated] = useState(() => {
       return localStorage.getItem('proxy_auth_status') === 'true';
     });
+    
+    useEffect(() => {
+      if (isAuthenticated && !sessionStorage.getItem('hasSeenWelcomePopup')) {
+        setShowWelcomePopup(true);
+        sessionStorage.setItem('hasSeenWelcomePopup', 'true');
+      }
+    }, [isAuthenticated]);
     const [authEmail, setAuthEmail] = useState(() => {
       return localStorage.getItem('proxy_auth_email') || '';
     });
@@ -2379,6 +2387,7 @@ import { Coins } from 'lucide-react';
                       localStorage.removeItem('proxy_auth_status');
                       localStorage.removeItem('proxy_auth_email');
                       localStorage.removeItem('proxy_admin_status');
+                      sessionStorage.removeItem('hasSeenWelcomePopup');
                     }}
                     className="relative inline-flex items-center h-9 rounded-full bg-slate-200/90 hover:bg-rose-100 text-slate-700 transition-all duration-300 shadow-sm border border-slate-300/70 group"
                     title="Logout"
@@ -2394,6 +2403,59 @@ import { Coins } from 'lucide-react';
             </div>
           </div>
         </div>
+
+        <AnimatePresence>
+          {showWelcomePopup && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+              >
+                <div className="bg-blue-600 px-6 py-5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h2 className="text-white font-black uppercase tracking-widest text-sm">Important Guidelines</h2>
+                  </div>
+                  <button onClick={() => setShowWelcomePopup(false)} className="text-white/70 hover:text-white hover:bg-white/20 p-2 rounded-xl transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  </button>
+                </div>
+                <div className="p-6 space-y-4 text-sm font-bold text-slate-600">
+                  <ul className="space-y-4">
+                    <li className="flex gap-3 items-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0"></div>
+                      <p>Please enter the correct Deal Product Name.</p>
+                    </li>
+                    <li className="flex gap-3 items-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0"></div>
+                      <p>Ensure that the Auth Token is valid and up to date.</p>
+                    </li>
+                    <li className="flex gap-3 items-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0"></div>
+                      <p>The Start Date and End Date fields are used to fetch CSL Logs data.</p>
+                    </li>
+                    <li className="flex gap-3 items-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 shrink-0"></div>
+                      <p>From the Matchmaking Intelligence screen, use the available filters and remove any sellers that are not relevant to the search criteria.</p>
+                    </li>
+                  </ul>
+                </div>
+                <div className="px-6 py-5 border-t border-slate-100 bg-slate-50 flex justify-end">
+                  <button 
+                    onClick={() => setShowWelcomePopup(false)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+                  >
+                    I Understand
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         <div className="max-w-[1600px] w-full mx-auto p-4 md:p-8 xl:p-10">
           {error && (
