@@ -56,6 +56,9 @@ async function callGateway(systemInstruction: string, userPrompt: any, isJson: b
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (errorText.toLowerCase().includes('expired_key') || errorText.toLowerCase().includes('expired key') || response.status === 401) {
+      window.dispatchEvent(new CustomEvent('gemini-auth-error', { detail: errorText }));
+    }
     throw new Error(`Gateway Error: ${response.status} - ${errorText}`);
   }
 
